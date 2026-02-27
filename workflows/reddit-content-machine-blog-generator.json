@@ -1,0 +1,480 @@
+{
+  "id": "wflw_reddit_content_machine_blog_generator_01",
+  "name": "Reddit to AI Content Machine - Blog Posts from Real Discussions",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c1b2c3d4-0001-4000-8000-000000000001",
+      "name": "When clicking Test workflow",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [220, 680]
+    },
+    {
+      "parameters": {
+        "formTitle": "Reddit Content Machine",
+        "formDescription": "Enter your content niche and preferences. The workflow will find the best Reddit discussions and generate blog post drafts based on real conversations.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Content Niche / Topic",
+              "placeholder": "e.g. remote work productivity, personal finance for millennials, home automation",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Target Audience",
+              "placeholder": "e.g. software engineers, first-time homebuyers, small business owners",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Blog Tone",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Professional and authoritative" },
+                  { "option": "Casual and conversational" },
+                  { "option": "Technical and detailed" },
+                  { "option": "Beginner-friendly and educational" },
+                  { "option": "Witty and opinionated" }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Number of Blog Posts",
+              "fieldType": "number",
+              "placeholder": "5",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Subreddits to Focus On (optional)",
+              "placeholder": "e.g. r/productivity, r/RemoteWork - leave blank to search all",
+              "requiredField": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Content Brief Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.1,
+      "position": [220, 460],
+      "webhookId": "content-machine-form"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// CONFIG (EDIT ME) + PARSE CONTENT BRIEF + BUILD ACTOR INPUT\n// ============================================================\n// Preferred pattern:\n// - One node to configure Apify + OpenAI keys/models\n// - Outputs a single `actorInput` matching THIS repo's Actor schema\n// - Uses `spry_wholemeal~reddit-scraper` by default\n// ============================================================\n\nconst input = $input.first().json;\n\n// ─── API KEYS (PASTE ONCE) ─────────────────────────────────\nconst apifyToken = 'APIFY_TOKEN_HERE';\nconst actorId = 'spry_wholemeal~reddit-scraper';\n\n// OpenAI (optional, but required to generate outlines + drafts)\nconst openAiApiKey = 'OPENAI_API_KEY_HERE';\nconst openAiModel = 'gpt-5.2';\n\n// ─── CONTENT BRIEF (FROM FORM) ─────────────────────────────\nconst niche = input['Content Niche / Topic'] || input['content_niche___topic'] || '';\nconst audience = input['Target Audience'] || input['target_audience'] || '';\nconst tone = input['Blog Tone'] || input['blog_tone'] || 'Casual and conversational';\nconst numPosts = parseInt(input['Number of Blog Posts']) || 5;\nconst subredditFocusRaw = input['Subreddits to Focus On (optional)'] || '';\n\nif (!niche) {\n  throw new Error('Please provide a content niche / topic.');\n}\n\n// Optional: restrict searches to a single subreddit\n// (Actor supports `search.restrictToSubreddit`)\nlet restrictToSubreddit = '';\nif (subredditFocusRaw) {\n  const candidates = String(subredditFocusRaw)\n    .split(/[,\\n]/)\n    .map((s) => s.trim())\n    .filter(Boolean)\n    .map((s) => s.replace(/^r\\//i, ''));\n  restrictToSubreddit = candidates[0] || '';\n}\n\n// Split niche into core terms for varied search queries\nconst nicheTerms = String(niche)\n  .split(/[,&]/)\n  .map((t) => t.trim())\n  .filter(Boolean);\n\n// Generate search queries targeting discussion-rich threads\nconst queries = [];\nfor (const term of nicheTerms) {\n  queries.push(\n    term,\n    `${term} tips`,\n    `${term} how do you`,\n    `${term} what is the best`,\n    `${term} beginner`,\n    `${term} unpopular opinion`,\n    `${term} mistake`,\n    `${term} changed my life`\n  );\n}\n\n// Cap at 40 queries to keep costs reasonable\nconst finalQueries = queries.slice(0, 40);\n\nconst contentBrief = {\n  niche,\n  audience,\n  tone,\n  numPosts,\n  subredditFocus: restrictToSubreddit\n};\n\n// Build Actor input (matches this repo's schema)\nconst actorInput = {\n  mode: 'search',\n  search: {\n    queries: finalQueries,\n    sort: 'top',\n    timeframe: 'month',\n    maxPostsPerQuery: 15,\n    includeNsfw: false,\n    ...(restrictToSubreddit ? { restrictToSubreddit } : {}),\n    comments: {\n      mode: 'all',\n      maxTopLevel: 30,\n      maxDepth: 3\n    }\n  },\n  includeRaw: false,\n  tag: 'n8n-content-machine'\n};\n\nreturn [\n  {\n    json: {\n      apifyToken,\n      actorId,\n      openAiApiKey,\n      openAiModel,\n      actorInput,\n      contentBrief,\n      queryCount: finalQueries.length\n    }\n  }\n];"
+      },
+      "id": "c1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Config (edit me) + Build Actor Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 560],
+      "notes": "Generates varied search queries from your niche topic.\n\nQuery patterns target discussion-rich threads:\n- Direct topic searches\n- 'how do you' = experience sharing\n- 'tips' = advice threads\n- 'unpopular opinion' = debate/contrarian\n- 'mistake' = lessons learned\n- 'changed my life' = transformation stories\n\nThese patterns produce the richest content material."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://api.apify.com/v2/acts/' + encodeURIComponent(String($json.actorId || '').replace('/', '~')) + '/run-sync-get-dataset-items?token=' + $json.apifyToken}}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{$json.actorInput}}",
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "id": "c1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Search Reddit (Apify)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 560],
+      "notes": "Runs your Reddit Scraper in SEARCH mode.\n\nPaste your Apify token in the \"Config (edit me) + Build Actor Input\" node.\n\nUses the run-sync-get-dataset-items endpoint for a single-call run+results."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// JOIN POSTS + COMMENTS → THREADS, THEN FILTER/RANK\n// ============================================================\n// Our Actor returns flat records:\n//   - PostRecord (record_type='post')\n//   - CommentRecord (record_type='comment')\n// We join comments back to posts by post_id, build a small\n// comment tree, then rank for discussion-rich threads.\n// ============================================================\n\nconst first = $input.first()?.json;\nconst records = Array.isArray(first)\n  ? first\n  : (first?.items ?? first?.data ?? $input.all().map((i) => i.json).filter(Boolean));\n\nconst cfg = $node['Config (edit me) + Build Actor Input'].json;\nconst brief = cfg.contentBrief;\n\nconst postsRaw = records.filter((r) => r && r.record_type === 'post');\nconst commentsRaw = records.filter((r) => r && r.record_type === 'comment');\n\n// Index comments by post_id\nconst commentsByPostId = new Map();\nfor (const c of commentsRaw) {\n  const pid = c.post_id;\n  if (!pid) continue;\n  if (!commentsByPostId.has(pid)) commentsByPostId.set(pid, []);\n  commentsByPostId.get(pid).push(c);\n}\n\nfunction clean(s) {\n  return String(s || '').replace(/\\s+/g, ' ').trim();\n}\n\nfunction buildThread(post) {\n  const pid = post.post_id;\n  const list = commentsByPostId.get(pid) || [];\n\n  // Build comment nodes map\n  const nodes = new Map();\n  for (const c of list) {\n    const id = c.comment_id;\n    if (!id) continue;\n    nodes.set(id, {\n      id,\n      body: clean(c.text).slice(0, 600),\n      score: Number(c.score || 0),\n      depth: Number(c.depth || 0),\n      parent_type: c.parent_type || 'unknown',\n      parent_id: c.parent_id || '',\n      replies: []\n    });\n  }\n\n  // Link replies\n  const topLevel = [];\n  for (const node of nodes.values()) {\n    if (node.parent_type === 'comment' && node.parent_id && nodes.has(node.parent_id)) {\n      nodes.get(node.parent_id).replies.push(node);\n    } else {\n      topLevel.push(node);\n    }\n  }\n\n  // Sort and trim\n  topLevel.sort((a, b) => (b.score || 0) - (a.score || 0));\n  const topLevelTrimmed = topLevel.slice(0, 12).map((c) => {\n    c.replies.sort((a, b) => (b.score || 0) - (a.score || 0));\n    c.replies = c.replies.slice(0, 6).map((r) => ({ body: r.body.slice(0, 400), score: r.score || 0 }));\n    return { body: c.body, score: c.score || 0, replies: c.replies };\n  });\n\n  const commentTexts = topLevelTrimmed.map((c) => c.body);\n  const avgCommentLength = commentTexts.length\n    ? commentTexts.reduce((sum, t) => sum + t.length, 0) / commentTexts.length\n    : 0;\n\n  const score = Number(post.score || 0);\n  const numComments = Number(post.num_comments || 0);\n\n  const contentScore = (numComments * 3) + (avgCommentLength * 0.1) + (score * 0.5);\n\n  return {\n    title: clean(post.title),\n    subreddit: clean(post.subreddit),\n    url: post.permalink || post.url || '',\n    selftext: clean(post.text).slice(0, 2000),\n    score,\n    numComments,\n    contentScore: Math.round(contentScore),\n    engagementLevel: post.engagement_level || '',\n    comments: topLevelTrimmed\n  };\n}\n\n// Deduplicate posts by post_id\nconst seen = new Set();\nconst uniquePosts = [];\nfor (const p of postsRaw) {\n  if (!p.post_id) continue;\n  if (seen.has(p.post_id)) continue;\n  seen.add(p.post_id);\n  uniquePosts.push(p);\n}\n\nconst threadsAll = uniquePosts.map(buildThread);\n\n// Discussion rich: prefer substance over virality\nconst discussionRich = threadsAll.filter((t) => t.numComments >= 10 && t.score >= 5);\n\nconst numToKeep = Math.min((brief.numPosts || 5) * 2, 20);\nconst top = discussionRich\n  .sort((a, b) => (b.contentScore || 0) - (a.contentScore || 0))\n  .slice(0, numToKeep);\n\nconsole.log(`Pipeline: ${records.length} records -> ${uniquePosts.length} posts -> ${discussionRich.length} discussion-rich -> ${top.length} selected`);\n\nreturn [\n  {\n    json: {\n      threads: top,\n      threadCount: top.length,\n      contentBrief: brief,\n      openAiApiKey: cfg.openAiApiKey,\n      openAiModel: cfg.openAiModel\n    }\n  }\n];"
+      },
+      "id": "c1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Filter Discussion-Rich Threads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 560],
+      "notes": "Selects the meatiest threads for content generation.\n\nContent Score formula:\n  (comments x 3) + (avg comment length x 0.1) + (score x 0.5)\n\nThis weights discussion depth over raw popularity.\nA thread with 50 thoughtful comments beats a meme\nwith 5000 upvotes for content generation."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $json.openAiApiKey}}"
+            },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "specifyHeaders": "keypair",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({\n  model: $json.openAiModel,\n  reasoning_effort: 'none',\n  verbosity: 'medium',\n  response_format: {\n    type: 'json_schema',\n    json_schema: {\n      name: 'blog_outlines',\n      strict: true,\n      schema: {\n        type: 'object',\n        additionalProperties: false,\n        properties: {\n          outlines: {\n            type: 'array',\n            items: {\n              type: 'object',\n              additionalProperties: false,\n              properties: {\n                title: { type: 'string' },\n                slug: { type: 'string' },\n                hook: { type: 'string' },\n                targetKeyword: { type: 'string' },\n                secondaryKeywords: { type: 'array', items: { type: 'string' } },\n                sections: {\n                  type: 'array',\n                  items: {\n                    type: 'object',\n                    additionalProperties: false,\n                    properties: {\n                      heading: { type: 'string' },\n                      keyPoints: { type: 'array', items: { type: 'string' } },\n                      redditInsight: { type: 'string' }\n                    },\n                    required: ['heading', 'keyPoints', 'redditInsight']\n                  }\n                },\n                sourceThreads: { type: 'array', items: { type: 'string' } },\n                estimatedWordCount: { type: 'integer' },\n                contentType: { type: 'string' },\n                uniqueAngle: { type: 'string' }\n              },\n              required: ['title', 'slug', 'hook', 'targetKeyword', 'secondaryKeywords', 'sections', 'sourceThreads', 'estimatedWordCount', 'contentType', 'uniqueAngle']\n            }\n          }\n        },\n        required: ['outlines']\n      }\n    }\n  },\n  messages: [\n    {\n      role: 'system',\n      content: 'You are an expert content strategist and blog writer. You analyze Reddit discussions to identify the best angles for blog content, then create detailed outlines. You understand SEO and audience engagement. Return only JSON that matches the schema.'\n    },\n    {\n      role: 'user',\n      content: `Analyze these ${$json.threadCount} Reddit threads and generate blog post OUTLINES.\\n\\nCONTENT BRIEF:\\n- Niche: ${$json.contentBrief.niche}\\n- Target audience: ${$json.contentBrief.audience}\\n- Tone: ${$json.contentBrief.tone}\\n- Number of posts needed: ${$json.contentBrief.numPosts}\\n\\nIMPORTANT RULES:\\n- Each blog post must be ORIGINAL — inspired by the discussion, NOT a summary of it\\n- Pull real pain points, questions, and insights from comments as inspiration\\n- Each post should have a unique angle (don\\'t repeat similar topics)\\n- Include SEO-friendly titles and keywords\\n- Content should genuinely help the target audience\\n\\nGenerate exactly ${$json.contentBrief.numPosts} outlines. Pick the best, most diverse angles from the threads below.\\n\\nTHREADS:\\n${$json.threads.map((t, i) => {\n  const commentText = (t.comments || []).map((c, ci) => {\n    let txt = `  Comment ${ci+1} (${c.score} pts): ${String(c.body||'').substring(0, 400)}`;\n    if (c.replies && c.replies.length > 0) {\n      txt += c.replies.map(r => `\\n    Reply (${r.score} pts): ${String(r.body||'').substring(0, 250)}`).join('');\n    }\n    return txt;\n  }).join('\\\\n');\n  return `[Thread ${i+1}] r/${t.subreddit}: \"${t.title}\" (${t.score} upvotes, ${t.numComments} comments)\\\\nBody: ${String(t.selftext||'').substring(0, 600)}\\\\nComments:\\\\n${commentText}\\\\nURL: ${t.url}\\\\n---`;\n}).join('\\\\n\\\\n')}`\n    }\n  ],\n  max_completion_tokens: 2500\n})}}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "c1b2c3d4-0006-4000-8000-000000000006",
+      "name": "AI Generate Outlines",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1280, 560],
+      "notes": "Step 1 of 2-step AI process:\n\nThis node creates OUTLINES — structured plans for each\nblog post with SEO titles, section headings, key points,\nand the insights that inspired each section.\n\nModel + API key are configured in the first Config node."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// PARSE OUTLINES & PREPARE FOR DRAFT GENERATION\n// ============================================================\n// Splits the AI outline response into individual items\n// so each blog post can be drafted separately.\n// ============================================================\n\nconst aiResponse = $input.first().json;\nconst upstream = $node['Filter Discussion-Rich Threads'].json;\nconst brief = upstream.contentBrief;\n\nlet responseText = aiResponse.message?.content\n  || aiResponse.text\n  || aiResponse.choices?.[0]?.message?.content\n  || JSON.stringify(aiResponse);\n\nlet parsed;\ntry {\n  const cleaned = responseText\n    .replace(/```json\\n?/g, '')\n    .replace(/```\\n?/g, '')\n    .trim();\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  console.log('Parse error:', e.message);\n  return [{\n    json: {\n      outline: {\n        title: 'PARSE ERROR - Check AI Outline node output',\n        sections: [],\n        sourceThreads: [],\n        targetKeyword: '',\n        secondaryKeywords: [],\n        hook: responseText.substring(0, 500),\n        contentType: 'unknown',\n        uniqueAngle: '',\n        estimatedWordCount: 0,\n        slug: 'error'\n      },\n      contentBrief: brief,\n      openAiApiKey: upstream.openAiApiKey,\n      openAiModel: upstream.openAiModel,\n      outlineIndex: 0,\n      totalOutlines: 1\n    }\n  }];\n}\n\nconst outlines = parsed.outlines || parsed.posts || parsed.blogPosts || [parsed];\n\nconsole.log(`Parsed ${outlines.length} blog post outlines`);\n\nreturn outlines.map((outline, i) => ({\n  json: {\n    outline,\n    contentBrief: brief,\n    openAiApiKey: upstream.openAiApiKey,\n    openAiModel: upstream.openAiModel,\n    outlineIndex: i,\n    totalOutlines: outlines.length\n  }\n}));"
+      },
+      "id": "c1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Parse Outlines",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 560]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $json.openAiApiKey}}"
+            },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "specifyHeaders": "keypair",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({\n  model: $json.openAiModel,\n  reasoning_effort: 'none',\n  verbosity: 'high',\n  messages: [\n    {\n      role: 'system',\n      content: 'You are a skilled blog writer. You write engaging, well-researched blog posts that feel authentic and provide real value. You NEVER produce generic filler content. Every paragraph earns its place. You write in the specified tone and for the specified audience.'\n    },\n    {\n      role: 'user',\n      content: `Write a complete blog post draft based on this outline.\\n\\nTONE: ${$json.contentBrief.tone}\\nAUDIENCE: ${$json.contentBrief.audience}\\n\\nOUTLINE:\\nTitle: ${$json.outline.title}\\nHook: ${$json.outline.hook}\\nTarget keyword: ${$json.outline.targetKeyword}\\nContent type: ${$json.outline.contentType}\\nUnique angle: ${$json.outline.uniqueAngle}\\n\\nSECTIONS:\\n${($json.outline.sections || []).map((s) => `## ${s.heading}\\\\nKey points: ${(s.keyPoints || []).join('; ')}\\\\nReddit insight: ${s.redditInsight || 'N/A'}`).join('\\\\n\\\\n')}\\n\\nINSTRUCTIONS:\\n1. Write the complete post in Markdown format\\n2. Target approximately ${$json.outline.estimatedWordCount || 1200} words\\n3. Start with an engaging hook (NO cliches like \"In today's world\" or \"Have you ever\")\\n4. Use the section headings from the outline as H2s\\n5. Weave in the Reddit insights naturally (NEVER link to or mention Reddit directly)\\n6. Include practical, actionable advice in every section\\n7. End with a clear takeaway or call-to-action\\n8. Naturally include the target keyword 3-5 times\\n9. Write like a knowledgeable human, not an AI\\n10. NO generic filler paragraphs — every sentence should add value\\n\\nReturn ONLY the blog post in Markdown. No meta-commentary.`\n    }\n  ],\n  max_completion_tokens: 3800\n})}}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "c1b2c3d4-0008-4000-8000-000000000008",
+      "name": "AI Write Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1800, 560],
+      "notes": "Step 2 of 2: Writes the full blog draft.\n\nProcesses each outline individually (n8n auto-loops).\nModel + API key are configured in the first Config node."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// FORMAT FINAL OUTPUT FOR GOOGLE SHEETS\n// ============================================================\n// Combines the outline metadata with the full draft into\n// a clean row for the content calendar spreadsheet.\n//\n// IMPORTANT: This workflow drafts multiple posts (one item per outline).\n// We must use the *current* outline item, not `.first()`.\n// ============================================================\n\nconst aiResponse = $input.first().json;\nconst outlineData = ($items('Parse Outlines')[$itemIndex] || {}).json || {};\nconst outline = outlineData.outline || {};\n\nconst draft = aiResponse.message?.content\n  || aiResponse.text\n  || aiResponse.choices?.[0]?.message?.content\n  || 'Draft generation failed - check AI Write Draft node';\n\nconst cleanDraft = String(draft)\n  .replace(/^```markdown\\n?/g, '')\n  .replace(/^```\\n?/g, '')\n  .replace(/\\n?```$/g, '')\n  .trim();\n\nconst wordCount = cleanDraft.split(/\\s+/).length;\n\nconst brief = outlineData.contentBrief || {};\n\nreturn [{\n  json: {\n    title: outline.title || '',\n    slug: outline.slug || '',\n    contentType: outline.contentType || '',\n    targetKeyword: outline.targetKeyword || '',\n    secondaryKeywords: (outline.secondaryKeywords || []).join(', '),\n    uniqueAngle: outline.uniqueAngle || '',\n    estimatedWordCount: wordCount,\n    blogDraft: cleanDraft,\n    sourceThreads: (outline.sourceThreads || []).join(' | '),\n    sourceSubreddits: [...new Set((outline.sourceThreads || []).map(url => {\n      const match = String(url || '').match(/r\\/([^/]+)/);\n      return match ? `r/${match[1]}` : '';\n    }).filter(s => s))].join(', '),\n    niche: brief.niche || '',\n    audience: brief.audience || '',\n    tone: brief.tone || '',\n    status: 'Draft - Needs Review',\n    generatedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "c1b2c3d4-0009-4000-8000-000000000009",
+      "name": "Format Content Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2060, 560]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "YOUR_GOOGLE_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Content Pipeline"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "c1b2c3d4-0010-4000-8000-000000000010",
+      "name": "Save to Content Pipeline",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2320, 420],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets OAuth2"
+        }
+      },
+      "notes": "Saves all blog post drafts to your content pipeline sheet.\n\nCREATE SHEET with tab named 'Content Pipeline'\nColumn headers in Row 1:\n\ntitle | slug | contentType | targetKeyword |\nsecondaryKeywords | uniqueAngle | estimatedWordCount |\nblogDraft | sourceThreads | sourceSubreddits |\nniche | audience | tone | status | generatedAt\n\nThe blogDraft column will contain full Markdown text.\nCopy-paste into your CMS or Google Docs for editing.\n\nThe status column defaults to Draft - Needs Review.\nUpdate manually as you edit and publish."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// BUILD SUMMARY REPORT\n// ============================================================\n\nconst items = $input.all().map(i => i.json);\n\nconst today = new Date().toLocaleDateString('en-US', {\n  weekday: 'long', month: 'short', day: 'numeric'\n});\n\nlet summary = `Content Machine Report - ${today}\\n\\n`;\nsummary += `Generated ${items.length} blog post drafts from Reddit discussions.\\n\\n`;\n\nitems.forEach((item, i) => {\n  const wordCount = item.estimatedWordCount || 0;\n  summary += `${i + 1}. ${item.title}\\n`;\n  summary += `   Type: ${item.contentType} | Words: ~${wordCount} | Keyword: \"${item.targetKeyword}\"\\n`;\n  summary += `   Angle: ${item.uniqueAngle}\\n`;\n  summary += `   Sources: ${item.sourceSubreddits || 'N/A'}\\n\\n`;\n});\n\nconst totalWords = items.reduce((sum, item) => sum + (item.estimatedWordCount || 0), 0);\nsummary += `\\nTotal: ${items.length} posts, ~${totalWords.toLocaleString()} words`;\nsummary += `\\nAll drafts saved to Google Sheets - ready for editing.`;\n\nreturn [{ json: { summary, postCount: items.length, totalWords } }];"
+      },
+      "id": "c1b2c3d4-0011-4000-8000-000000000011",
+      "name": "Build Summary Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2320, 700]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "message",
+        "operation": "post",
+        "channel": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#content"
+        },
+        "messageType": "text",
+        "text": "={{ $json.summary }}",
+        "otherOptions": {
+          "unfurl_links": false,
+          "unfurl_media": false
+        }
+      },
+      "id": "c1b2c3d4-0012-4000-8000-000000000012",
+      "name": "Slack Summary (Optional)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [2580, 700],
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Slack OAuth2"
+        }
+      },
+      "notes": "OPTIONAL - sends a summary of generated posts to Slack.\n\nRemove this node + the Summary node if you dont need\nSlack notifications. The Sheets output works standalone.\n\nAlternative: Replace with Gmail node to email the summary."
+    },
+    {
+      "parameters": {
+        "content": "# Reddit to AI Content Machine\n## Blog Posts from Real Discussions\n\nWhat this does:\nEnter a niche topic -> Finds the richest Reddit discussions ->\nAI generates blog post outlines based on real pain points,\nquestions, and experiences -> Writes full drafts -> Outputs\na complete content pipeline to Google Sheets.\n\nThe magic: Content is grounded in REAL conversations\npeople are having. No generic AI fluff - every post is\ninspired by actual questions, debates, and experiences\nfrom engaged communities.\n\n---\n\nQuick Setup:\n1. Paste your Apify token in **Config (edit me) + Build Actor Input**\n2. Actor ID is already set to `spry_wholemeal~reddit-scraper` by default\n3. Paste your OpenAI API key in the same Config node\n4. Create Google Sheet with Content Pipeline tab\n5. Run it! Fill in the form with your niche\n\n---\n\nCost Per Run (5 blog posts):\n- Apify: ~$0.15-0.40 (search + deep comments)\n- OpenAI: varies (outlines + drafts; depends on model + length)\n- Total: varies\n\n---\n\nActor: Reddit Scraper Actor on Apify Store\nTemplate by: [Your Name]",
+        "height": 660,
+        "width": 500,
+        "color": 4
+      },
+      "id": "c1b2c3d4-0013-4000-8000-000000000013",
+      "name": "Sticky Note - Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-240, 260]
+    },
+    {
+      "parameters": {
+        "content": "Phase 1: FIND\nSearches Reddit with varied query\npatterns designed to find discussion-\nrich threads - tips, how-tos,\nopinions, mistakes, experiences.\n\nFilters for threads with 10+\ncomments (substance over virality).\nScores by content richness.",
+        "height": 200,
+        "width": 260,
+        "color": 3
+      },
+      "id": "c1b2c3d4-0014-4000-8000-000000000014",
+      "name": "Sticky Note - Phase 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "content": "Phase 2: OUTLINE\nAI analyzes threads and creates\nstructured outlines with SEO titles,\nsection headings, keywords, and\nthe Reddit insights that inspired\neach section.\n\n2-step AI = much better quality\nthan single-prompt generation.",
+        "height": 200,
+        "width": 260,
+        "color": 3
+      },
+      "id": "c1b2c3d4-0015-4000-8000-000000000015",
+      "name": "Sticky Note - Phase 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "content": "Phase 3: WRITE and OUTPUT\nAI writes full Markdown drafts\nfrom each outline. Anti-cliche\nprompting ensures authentic voice.\n\nAll drafts + SEO metadata saved\nto Google Sheets content pipeline.\n\nOptional Slack summary notification.",
+        "height": 200,
+        "width": 260,
+        "color": 3
+      },
+      "id": "c1b2c3d4-0016-4000-8000-000000000016",
+      "name": "Sticky Note - Phase 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1960, 260]
+    },
+    {
+      "parameters": {
+        "content": "Why 2-Step AI?\n\nOutline first, Draft second produces dramatically\nbetter content than a single write me a blog post prompt.\n\nStep 1 (Outline): Analytical + strategic.\nPicks the best angles, structures sections, assigns\nkeywords. Temperature: 0.4 (focused).\n\nStep 2 (Draft): Creative + expressive.\nWrites engaging prose from the outline scaffold.\nTemperature: 0.6 (more creative).\n\nThis mirrors how professional writers work:\nresearch and outline first, write second.",
+        "height": 300,
+        "width": 400,
+        "color": 7
+      },
+      "id": "c1b2c3d4-0017-4000-8000-000000000017",
+      "name": "Sticky Note - 2 Step",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-240, 960]
+    },
+    {
+      "parameters": {
+        "content": "Pro Tips\n\nBest niches for this workflow:\nTopics where people share real experiences\nand ask genuine questions. Great for:\n- B2B SaaS, productivity, dev tools\n- Personal finance, investing\n- Health and fitness, nutrition\n- Career advice, freelancing\n- Home improvement, DIY\n\nLess effective for:\n- Meme-heavy communities\n- News/politics (too time-sensitive)\n- Highly visual content (recipes, fashion)\n\nScale it up:\n- Add a Schedule trigger for weekly generation\n- Pipe drafts directly to WordPress via API\n- Add a human review step with n8n Forms",
+        "height": 380,
+        "width": 400,
+        "color": 6
+      },
+      "id": "c1b2c3d4-0018-4000-8000-000000000018",
+      "name": "Sticky Note - Tips",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [320, 900]
+    }
+  ],
+  "connections": {
+    "When clicking Test workflow": {
+      "main": [
+        [
+          {
+            "node": "Config (edit me) + Build Actor Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Content Brief Form": {
+      "main": [
+        [
+          {
+            "node": "Config (edit me) + Build Actor Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (edit me) + Build Actor Input": {
+      "main": [
+        [
+          {
+            "node": "Search Reddit (Apify)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Reddit (Apify)": {
+      "main": [
+        [
+          {
+            "node": "Filter Discussion-Rich Threads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Discussion-Rich Threads": {
+      "main": [
+        [
+          {
+            "node": "AI Generate Outlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Generate Outlines": {
+      "main": [
+        [
+          {
+            "node": "Parse Outlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Outlines": {
+      "main": [
+        [
+          {
+            "node": "AI Write Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Write Draft": {
+      "main": [
+        [
+          {
+            "node": "Format Content Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Content Output": {
+      "main": [
+        [
+          {
+            "node": "Save to Content Pipeline",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Summary Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary Report": {
+      "main": [
+        [
+          {
+            "node": "Slack Summary (Optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "Content Marketing"
+    },
+    {
+      "name": "AI"
+    },
+    {
+      "name": "Reddit"
+    },
+    {
+      "name": "SEO"
+    },
+    {
+      "name": "Blogging"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-27T00:00:00.000Z",
+  "versionId": "1"
+}

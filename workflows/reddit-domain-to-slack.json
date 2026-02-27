@@ -1,0 +1,139 @@
+{
+  "id": "wflw_reddit_domain_slack_01",
+  "name": "Reddit Scraper — Domain links → Slack alerts",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "9a2b1b40-8c42-4e8b-a6b8-57a53c8e8f1b",
+      "name": "When clicking ‘Test workflow’",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      apifyToken: 'APIFY_TOKEN_HERE',\n      actorId: 'spry_wholemeal~reddit-scraper',\n      domains: ['mycompany.com'],\n      maxPostsPerDomain: 50,\n      commentsMode: 'none',\n      commentsMaxTopLevel: 50,\n      commentsMaxDepth: 2,\n      includeRaw: false,\n      tag: 'n8n-domain-monitor',\n      slackWebhookUrl: 'https://hooks.slack.com/services/XXX/YYY/ZZZ'\n    }\n  }\n];"
+      },
+      "id": "4c2d4c8c-1c1c-4a2d-a2c9-1f3e1e3a7f8a",
+      "name": "Config (edit me)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://api.apify.com/v2/acts/' + encodeURIComponent(String($json.actorId || '').replace('/', '~')) + '/run-sync-get-dataset-items?token=' + $json.apifyToken}}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({\n  mode: 'domain',\n  domain: {\n    domains: $json.domains,\n    maxPostsPerDomain: $json.maxPostsPerDomain,\n    comments: {\n      mode: $json.commentsMode,\n      maxTopLevel: $json.commentsMaxTopLevel,\n      maxDepth: $json.commentsMaxDepth\n    }\n  },\n  tag: $json.tag,\n  includeRaw: $json.includeRaw\n})}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "f8edb4cb-6f9e-4c5a-a4c2-0c7a5b6d3c11",
+      "name": "Run Actor (sync → dataset items)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [820, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = items[0]?.json;\n\nconst records = Array.isArray(payload)\n  ? payload\n  : (payload?.items ?? payload?.data ?? []);\n\nconst posts = records.filter((r) => r && r.record_type === 'post');\n\nreturn posts.map((p) => ({ json: p }));"
+      },
+      "id": "c1c8f2a3-9c21-4a24-9f7f-4c2a0df8e0a1",
+      "name": "Posts only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = this.getWorkflowStaticData('global');\nstaticData.seenPostIds = staticData.seenPostIds || {};\n\nconst out = [];\nfor (const item of items) {\n  const id = item.json?.post_id;\n  if (!id) continue;\n  if (staticData.seenPostIds[id]) continue;\n  staticData.seenPostIds[id] = true;\n  out.push(item);\n}\nreturn out;"
+      },
+      "id": "2d6d4b6b-21bb-4c8b-9f4c-9f3aaf11b6c1",
+      "name": "Dedupe (new posts only)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "6f1e1e6e-0b7b-4d3d-b7c8-0f6b0b2d1b20",
+      "name": "One at a time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node['Config (edit me)'].json.slackWebhookUrl}}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({\n  text: `🔗 Reddit link to ${$json.domain}\\n• ${$json.title}\\n• r/${$json.subreddit} | score ${$json.score} | comments ${$json.num_comments}\\n${$json.permalink}`\n})}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "5a6e3c2d-7a9b-4f4f-9f67-0f7a3d8b9c10",
+      "name": "Slack (webhook)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {},
+      "id": "bd77b8b5-5f2a-4a33-90a1-11bb3c9a7d0f",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2020, 440]
+    }
+  ],
+  "connections": {
+    "When clicking ‘Test workflow’": {
+      "main": [[{ "node": "Config (edit me)", "type": "main", "index": 0 }]]
+    },
+    "Config (edit me)": {
+      "main": [[{ "node": "Run Actor (sync → dataset items)", "type": "main", "index": 0 }]]
+    },
+    "Run Actor (sync → dataset items)": {
+      "main": [[{ "node": "Posts only", "type": "main", "index": 0 }]]
+    },
+    "Posts only": {
+      "main": [[{ "node": "Dedupe (new posts only)", "type": "main", "index": 0 }]]
+    },
+    "Dedupe (new posts only)": {
+      "main": [[{ "node": "One at a time", "type": "main", "index": 0 }]]
+    },
+    "One at a time": {
+      "main": [
+        [{ "node": "Slack (webhook)", "type": "main", "index": 0 }],
+        [{ "node": "Done", "type": "main", "index": 0 }]
+      ]
+    },
+    "Slack (webhook)": {
+      "main": [[{ "node": "One at a time", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "pinData": {},
+  "tags": []
+}
+

@@ -1,0 +1,126 @@
+{
+  "id": "wflw_reddit_weekly_digest_email_01",
+  "name": "Reddit Scraper — Weekly digest email (Search)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyWeek",
+              "weekDay": 1,
+              "hour": 9,
+              "minute": 0
+            }
+          ]
+        }
+      },
+      "id": "9f01a2b3-c4d5-4e6f-8a9b-0c1d2e3f4a5b",
+      "name": "Every Monday 09:00",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      apifyToken: 'APIFY_TOKEN_HERE',\n      actorId: 'spry_wholemeal~reddit-scraper',\n      queries: ['best crm', 'sales automation'],\n      sort: 'top',\n      timeframe: 'week',\n      maxPostsPerQuery: 25,\n      includeNsfw: false,\n      includeRaw: false,\n      tag: 'n8n-weekly-digest',\n\n      // Optional: AI analysis (trends + summary)\n      // Paste your OpenAI API key here (https://platform.openai.com/api-keys)\n      openAiApiKey: 'OPENAI_API_KEY_HERE',\n      openAiModel: 'gpt-5.2',\n\n      // Email settings\n      // Create an SMTP credential in the \"Send Email\" node in n8n.\n      // If you're using Resend SMTP:\n      //   Host: smtp.resend.com\n      //   Port: 465\n      //   User: resend\n      //   Pass: <your Resend API key>\n      fromEmail: 'FROM_EMAIL_HERE',\n      toEmail: 'TO_EMAIL_HERE',\n      subject: 'Weekly Reddit digest'\n    }\n  }\n];"
+      },
+      "id": "1a2b3c4d-5e6f-4a5b-8c9d-0e1f2a3b4c5d",
+      "name": "Config (edit me)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://api.apify.com/v2/acts/' + encodeURIComponent(String($json.actorId || '').replace('/', '~')) + '/run-sync-get-dataset-items?token=' + $json.apifyToken}}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({\n  mode: 'search',\n  search: {\n    queries: $json.queries,\n    sort: $json.sort,\n    timeframe: $json.timeframe,\n    maxPostsPerQuery: $json.maxPostsPerQuery,\n    includeNsfw: $json.includeNsfw,\n    comments: { mode: 'none', maxTopLevel: 25, maxDepth: 1 }\n  },\n  tag: $json.tag,\n  includeRaw: $json.includeRaw\n})}}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+      "name": "Run Actor (sync → dataset items)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [820, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// PREP DIGEST + BUILD AI PROMPT\n// ============================================================\n\nconst first = items[0]?.json;\n\n// n8n HTTP Request can return either:\n// - many items (each item.json is a record)\n// - one item whose json is an array (records)\n// - one item whose json has { items: [...] } or { data: [...] }\nconst records = Array.isArray(first)\n  ? first\n  : (first?.items ?? first?.data ?? items.map((i) => i.json).filter(Boolean));\n\nconst posts = records.filter((r) => r && r.record_type === 'post');\nconst top = posts.slice(0, 30);\n\nconst cleanText = (t) => String(t || '').replace(/\\s+/g, ' ').trim();\n\nconst topPosts = top.map((p) => ({\n  title: p.title ?? '(no title)',\n  subreddit: p.subreddit ?? '(unknown)',\n  score: Number(p.score ?? 0),\n  numComments: Number(p.num_comments ?? 0),\n  permalink: p.permalink ?? p.url ?? '',\n  textSnippet: cleanText(p.text).slice(0, 240)\n}));\n\nconst lines = topPosts.map((p, i) => {\n  return `${i + 1}. ${p.title}\\n   r/${p.subreddit} | score ${p.score} | comments ${p.numComments}\\n   ${p.permalink}`;\n});\n\nconst cfg = $node['Config (edit me)'].json;\nconst queries = (cfg.queries || []).join(', ');\n\nconst aiPrompt = [\n  `You are an analyst writing a weekly Reddit digest for a founder/marketer.`,\n  `Task: review the posts and produce:`,\n  `- summary (concise)`,\n  `- 5 trends/themes with evidence`,\n  `- notable posts worth clicking`,\n  `- recommended actions/content ideas`,\n  `Output MUST be valid JSON matching the provided schema. No markdown.`,\n  '',\n  `Context:`,\n  `- queries: ${queries}`,\n  `- timeframe: ${cfg.timeframe}`,\n  `- sort: ${cfg.sort}`,\n  '',\n  `Posts (top ${topPosts.length}):`,\n  JSON.stringify(topPosts, null, 2)\n].join('\\n');\n\nreturn [\n  {\n    json: {\n      queries,\n      topPosts,\n      lines,\n      aiPrompt,\n      generatedAt: new Date().toISOString(),\n      openAiApiKey: cfg.openAiApiKey,\n      openAiModel: cfg.openAiModel\n    }\n  }\n];"
+      },
+      "id": "c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f",
+      "name": "Prep digest + AI prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{'Bearer ' + $json.openAiApiKey}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "specifyHeaders": "keypair",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({\n  model: $json.openAiModel,\n  reasoning_effort: 'minimal',\n  verbosity: 'low',\n  response_format: {\n    type: 'json_schema',\n    json_schema: {\n      name: 'weekly_reddit_digest',\n      strict: true,\n      schema: {\n        type: 'object',\n        additionalProperties: false,\n        properties: {\n          summary: { type: 'string' },\n          trends: {\n            type: 'array',\n            items: {\n              type: 'object',\n              additionalProperties: false,\n              properties: {\n                trend: { type: 'string' },\n                evidence: { type: 'array', items: { type: 'string' } }\n              },\n              required: ['trend', 'evidence']\n            }\n          },\n          notablePosts: {\n            type: 'array',\n            items: {\n              type: 'object',\n              additionalProperties: false,\n              properties: {\n                title: { type: 'string' },\n                subreddit: { type: 'string' },\n                permalink: { type: 'string' },\n                why: { type: 'string' }\n              },\n              required: ['title', 'subreddit', 'permalink', 'why']\n            }\n          },\n          recommendedActions: { type: 'array', items: { type: 'string' } }\n        },\n        required: ['summary', 'trends', 'notablePosts', 'recommendedActions']\n      }\n    }\n  },\n  messages: [\n    { role: 'system', content: 'Return only JSON matching the schema.' },\n    { role: 'user', content: $json.aiPrompt }\n  ],\n  max_completion_tokens: 1200\n})}}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "e7d8c9b0-a1b2-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "🤖 GPT trends + summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1300, 300],
+      "notes": "Optional AI step. Paste `OPENAI_API_KEY_HERE` in the Config node to enable."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// BUILD EMAIL BODY (AI + TOP POSTS)\n// ============================================================\n\nconst prep = $node['Prep digest + AI prompt'].json;\nconst ai = $node['🤖 GPT trends + summary'].json;\n\nlet analysis = null;\ntry {\n  const content = ai?.choices?.[0]?.message?.content;\n  analysis = content ? JSON.parse(content) : null;\n} catch (e) {\n  analysis = null;\n}\n\nconst sections = [];\nsections.push(`Weekly Reddit digest for: ${prep.queries}`);\nsections.push('');\n\nconst clean = (s) => String(s || '').replace(/\\s+/g, ' ').trim();\n\nif (analysis) {\n  sections.push('AI SUMMARY');\n  sections.push(clean(analysis.summary));\n  sections.push('');\n\n  if (Array.isArray(analysis.trends) && analysis.trends.length) {\n    sections.push('TRENDS');\n    analysis.trends.slice(0, 8).forEach((t, idx) => {\n      sections.push(`${idx + 1}. ${clean(t.trend)}`);\n      const ev = Array.isArray(t.evidence) ? t.evidence.slice(0, 3) : [];\n      ev.forEach((e) => sections.push(`   - ${clean(e)}`));\n    });\n    sections.push('');\n  }\n\n  if (Array.isArray(analysis.recommendedActions) && analysis.recommendedActions.length) {\n    sections.push('RECOMMENDED ACTIONS');\n    analysis.recommendedActions.slice(0, 8).forEach((a, idx) => sections.push(`${idx + 1}. ${clean(a)}`));\n    sections.push('');\n  }\n\n  if (Array.isArray(analysis.notablePosts) && analysis.notablePosts.length) {\n    sections.push('NOTABLE POSTS');\n    analysis.notablePosts.slice(0, 10).forEach((p, idx) => {\n      sections.push(`${idx + 1}. ${clean(p.title)} (r/${clean(p.subreddit)})`);\n      sections.push(`   ${p.permalink}`);\n      sections.push(`   Why: ${clean(p.why)}`);\n    });\n    sections.push('');\n  }\n} else {\n  sections.push('(AI summary unavailable — showing top posts only.)');\n  sections.push('');\n}\n\nsections.push('TOP POSTS');\nsections.push(...(prep.lines || []));\nsections.push('');\nsections.push(`Generated at: ${prep.generatedAt}`);\n\nconst bodyText = sections.join('\\n');\nreturn [{ json: { bodyText } }];"
+      },
+      "id": "f8e9d0c1-b2c3-4d5e-8f90-1a2b3c4d5e6f",
+      "name": "Build email body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "fromEmail": "={{$node['Config (edit me)'].json.fromEmail}}",
+        "toEmail": "={{$node['Config (edit me)'].json.toEmail}}",
+        "subject": "={{$node['Config (edit me)'].json.subject}}",
+        "emailFormat": "text",
+        "text": "={{$json.bodyText}}",
+        "options": {}
+      },
+      "id": "d4e5f6a7-b8c9-4d8e-9f0a-1b2c3d4e5f6a",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Every Monday 09:00": { "main": [[{ "node": "Config (edit me)", "type": "main", "index": 0 }]] },
+    "Config (edit me)": { "main": [[{ "node": "Run Actor (sync → dataset items)", "type": "main", "index": 0 }]] },
+    "Run Actor (sync → dataset items)": { "main": [[{ "node": "Prep digest + AI prompt", "type": "main", "index": 0 }]] },
+    "Prep digest + AI prompt": { "main": [[{ "node": "🤖 GPT trends + summary", "type": "main", "index": 0 }]] },
+    "🤖 GPT trends + summary": { "main": [[{ "node": "Build email body", "type": "main", "index": 0 }]] },
+    "Build email body": { "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "timezone": "UTC" },
+  "staticData": null,
+  "pinData": {},
+  "tags": []
+}
+

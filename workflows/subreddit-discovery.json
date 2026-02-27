@@ -1,0 +1,443 @@
+{
+  "name": "🔍 Reddit Subreddit Discovery & Niche Audience Map",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [220, 640]
+    },
+    {
+      "parameters": {
+        "formTitle": "🔍 Reddit Subreddit Discovery",
+        "formDescription": "Enter your niche keywords to discover relevant subreddits and generate an audience map. Separate multiple keywords with commas.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Niche Keywords",
+              "placeholder": "e.g. meal prep, home gym equipment, SaaS billing",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Max Subreddits Per Keyword",
+              "fieldType": "number",
+              "placeholder": "25",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Min Subscribers",
+              "fieldType": "number",
+              "placeholder": "1000",
+              "requiredField": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Niche Keywords Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.1,
+      "position": [220, 360],
+      "webhookId": "subreddit-discovery-form"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// PARSE USER INPUT & BUILD DISCOVER MODE CONFIG\n// ============================================================\n// Reads the form inputs and prepares the Apify Actor input\n// for this repo's Reddit Scraper Actor.\n//\n// Actor input schema (discover):\n//   { mode: 'discover', discover: { terms, maxSubredditsPerTerm, minSubscribers, includeNsfw, estimateActivity } }\n// ============================================================\n\nconst input = $input.first().json;\n\n// Paste your Apify token here (Apify Console → Settings → Integrations / API tokens)\nconst apifyToken = 'APIFY_TOKEN_HERE';\n\n// Paste your OpenAI API key here (https://platform.openai.com/api-keys)\nconst openAiApiKey = 'OPENAI_API_KEY_HERE';\n\n// Model used for AI steps in this workflow\nconst openAiModel = 'gpt-5.2';\n\n// Parse comma-separated keywords into clean array\nconst rawKeywords = input['Niche Keywords'] || input['niche_keywords'] || '';\nconst terms = rawKeywords\n  .split(',')\n  .map(k => k.trim())\n  .filter(k => k.length > 0);\n\nif (terms.length === 0) {\n  throw new Error('Please provide at least one niche keyword.');\n}\n\n// User-configurable limits with sensible defaults\nconst maxSubredditsPerTerm = parseInt(input['Max Subreddits Per Keyword']) || 25;\nconst minSubscribers = parseInt(input['Min Subscribers']) || 1000;\n\n// Build the Actor input for DISCOVER mode\nconst actorInput = {\n  mode: 'discover',\n  discover: {\n    terms,\n    maxSubredditsPerTerm,\n    minSubscribers,\n    includeNsfw: false,\n    estimateActivity: true\n  },\n  includeRaw: false,\n  tag: 'n8n-subreddit-discovery'\n};\n\nreturn [{\n  json: {\n    actorInput,\n    terms,\n    maxSubredditsPerTerm,\n    minSubscribers,\n    apifyToken,\n    openAiApiKey,\n    openAiModel,\n    actorId: 'spry_wholemeal~reddit-scraper'\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Parse Input & Build Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://api.apify.com/v2/acts/' + encodeURIComponent(String($json.actorId || '').replace('/', '~')) + '/run-sync-get-dataset-items?token=' + $json.apifyToken}}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{$json.actorInput}}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "🔍 Discover Subreddits (Apify)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [820, 460],
+      "notes": "Calls your Reddit Scraper Actor in DISCOVER mode.\n\nPaste your Apify token in the \"Parse Input & Build Config\" node.\n\nThe run-sync-get-dataset-items endpoint starts the Actor, waits for it to finish, and returns the results — all in one call."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// PREPARE CANDIDATES FOR AI SELECTION\n// ============================================================\n// Takes the Actor's SubredditRecord items and builds a compact\n// prompt for an AI model to pick the best subreddits.\n// ============================================================\n\nconst first = $input.first()?.json;\n\nconst records = Array.isArray(first)\n  ? first\n  : (first?.items ?? first?.data ?? $input.all().map((i) => i.json).filter(Boolean));\n\nconst subRecords = records.filter((r) => r && r.record_type === 'subreddit');\n\n// Deduplicate by subreddit name (lowercase)\nconst seen = new Set();\nconst unique = subRecords.filter((item) => {\n  const name = String(item.name || '').toLowerCase();\n  if (!name) return false;\n  if (seen.has(name)) return false;\n  seen.add(name);\n  return true;\n});\n\n// Candidate objects (keep only useful fields for selection + later merge)\nconst candidates = unique\n  .map((s) => {\n    const name = String(s.name || '').replace(/^r\\//, '').toLowerCase();\n    return {\n      name,\n      url: s.url || `https://www.reddit.com/r/${name}`,\n      title: s.title || '',\n      public_description: s.public_description || '',\n      subscribers: Number(s.subscribers || 0),\n      active_users: Number(s.active_users || 0),\n      estimated_posts_per_day: Number(s.estimated_posts_per_day || 0),\n      estimated_posts_per_week: Number(s.estimated_posts_per_week || 0),\n      search_term: s.search_term || ''\n    };\n  })\n  // drop empties\n  .filter((c) => c.name);\n\n// Keep prompt small: take top ~60 by subscribers so the model isn't flooded\ncandidates.sort((a, b) => b.subscribers - a.subscribers);\nconst promptCandidates = candidates.slice(0, 60);\n\nconst terms = $node['Parse Input & Build Config'].json.terms || [];\nconst topN = 10;\n\nconst lines = promptCandidates.map((c, i) => {\n  const desc = (c.public_description || '').replace(/\\s+/g, ' ').trim().slice(0, 160);\n  return `${i + 1}. r/${c.name} | subs ${c.subscribers} | act ${c.estimated_posts_per_day.toFixed(1)}/day | found_by \"${c.search_term}\" | ${desc}`;\n});\n\nconst prompt = [\n  `You are selecting the best Reddit communities for niche audience research.`,\n  `Niche keywords: ${terms.join(', ')}`,\n  `Goal: pick exactly ${topN} subreddits that are most relevant AND reasonably active.`,\n  `Avoid spam/low-signal subs. Prefer communities where real users discuss problems and solutions.`,\n  '',\n  `Return ONLY valid JSON with this exact shape:`,\n  `{`,\n  `  \"topSubreddits\": [`,\n  `    { \"name\": \"subreddit_name_without_r_prefix\", \"reason\": \"...\" }`,\n  `  ]`,\n  `}`,\n  '',\n  `CANDIDATES:`,\n  ...lines\n].join('\\n');\n\nconst actorId = $node['Parse Input & Build Config'].json.actorId;\nconst apifyToken = $node['Parse Input & Build Config'].json.apifyToken;\n\nreturn [\n  {\n    json: {\n      terms,\n      topN,\n      prompt,\n      candidates,\n      apifyToken,\n      actorId\n    }\n  }\n];"
+      },
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Rank & Filter Top Subreddits",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $node['Parse Input & Build Config'].json.openAiApiKey}}"
+            },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "specifyHeaders": "keypair",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({\n  model: $node['Parse Input & Build Config'].json.openAiModel,\n  messages: [\n    { role: 'system', content: 'You are a precise audience research assistant. Follow instructions exactly. Output only valid JSON.' },\n    { role: 'user', content: $json.prompt }\n  ],\n  temperature: 0.2,\n  max_completion_tokens: 800\n})}}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "a1b2c3d4-0020-4000-8000-000000000020",
+      "name": "🤖 Select Top Subreddits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1420, 460],
+      "notes": "Selects the best subreddits using OpenAI. Paste `OPENAI_API_KEY_HERE` in the first config node."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// PARSE AI SELECTION + BUILD SCRAPE INPUT\n// ============================================================\n\nconst aiResponse = $input.first().json;\n\n// Extract AI response text (handles n8n OpenAI node variants)\nlet responseText = aiResponse.message?.content\n  || aiResponse.text\n  || aiResponse.choices?.[0]?.message?.content\n  || JSON.stringify(aiResponse);\n\nconst cleaned = String(responseText)\n  .replace(/```json\\n?/g, '')\n  .replace(/```\\n?/g, '')\n  .trim();\n\nlet parsed;\ntry {\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  parsed = null;\n}\n\nconst upstream = $node['Rank & Filter Top Subreddits'].json;\nconst candidates = Array.isArray(upstream.candidates) ? upstream.candidates : [];\nconst topN = Number(upstream.topN || 10);\n\nconst byName = new Map(candidates.map((c) => [String(c.name || '').toLowerCase(), c]));\n\nlet selectedNames = [];\nif (parsed && Array.isArray(parsed.topSubreddits)) {\n  selectedNames = parsed.topSubreddits\n    .map((x) => String(x?.name || '').replace(/^r\\//, '').toLowerCase().trim())\n    .filter(Boolean);\n}\n\n// Fallback: if AI output isn't usable\nif (selectedNames.length === 0) {\n  selectedNames = candidates\n    .slice()\n    .sort((a, b) => (b.subscribers || 0) - (a.subscribers || 0))\n    .slice(0, topN)\n    .map((c) => c.name);\n}\n\n// Build topSubreddits with merged candidate metrics\nconst topSubreddits = [];\nfor (const name of selectedNames) {\n  const c = byName.get(name);\n  if (!c) continue;\n  topSubreddits.push({\n    subreddit: c.name,\n    url: c.url,\n    subscribers: c.subscribers,\n    estimatedPostsPerDay: c.estimated_posts_per_day,\n    estimatedPostsPerWeek: c.estimated_posts_per_week,\n    matchedKeyword: c.search_term\n  });\n  if (topSubreddits.length >= topN) break;\n}\n\nconst summary = {\n  totalCandidates: candidates.length,\n  topSelected: topSubreddits.length,\n  topSubredditNames: topSubreddits.map((s) => s.subreddit)\n};\n\nconst scrapeInput = {\n  mode: 'scrape',\n  scrape: {\n    subreddits: topSubreddits.map((s) => s.subreddit),\n    sort: 'top',\n    timeframe: 'month',\n    maxPostsPerSubreddit: 20,\n    comments: {\n      mode: 'high_engagement',\n      maxTopLevel: 10,\n      maxDepth: 1,\n      highEngagement: {\n        minScore: 10,\n        minComments: 5,\n        filterPosts: false\n      }\n    }\n  },\n  includeRaw: false,\n  tag: 'n8n-audience-map'\n};\n\nreturn [\n  {\n    json: {\n      topSubreddits,\n      summary,\n      scrapeInput,\n      apifyToken: upstream.apifyToken,\n      actorId: upstream.actorId\n    }\n  }\n];"
+      },
+      "id": "a1b2c3d4-0021-4000-8000-000000000021",
+      "name": "Build scrape plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://api.apify.com/v2/acts/' + encodeURIComponent(String($json.actorId || '').replace('/', '~')) + '/run-sync-get-dataset-items?token=' + $json.apifyToken}}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{$json.scrapeInput}}",
+        "options": {
+          "timeout": 180000,
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "📥 Scrape Top Subreddits (Apify)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2020, 460],
+      "notes": "Scrapes the top 10 discovered subreddits in parallel.\nFetches top posts from the past month with high-engagement comments."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// AGGREGATE DATA FOR AI ANALYSIS\n// ============================================================\n// The Actor returns a flat list of records:\n//   - PostRecord (record_type='post')\n//   - CommentRecord (record_type='comment')\n// We need to join comments back to posts by post_id.\n// ============================================================\n\nconst first = $input.first()?.json;\n\nconst records = Array.isArray(first)\n  ? first\n  : (first?.items ?? first?.data ?? $input.all().map((i) => i.json).filter(Boolean));\n\nconst posts = records.filter((r) => r && r.record_type === 'post');\nconst comments = records.filter((r) => r && r.record_type === 'comment');\n\nconst commentsByPostId = new Map();\nfor (const c of comments) {\n  const pid = c.post_id;\n  if (!pid) continue;\n  if (!commentsByPostId.has(pid)) commentsByPostId.set(pid, []);\n  commentsByPostId.get(pid).push(c);\n}\n\n// Sort comments per post by score desc and keep a small sample\nfor (const [pid, list] of commentsByPostId.entries()) {\n  list.sort((a, b) => (b.score || 0) - (a.score || 0));\n  commentsByPostId.set(pid, list.slice(0, 5));\n}\n\n// Group posts by subreddit\nconst bySubreddit = {};\nfor (const p of posts) {\n  const sub = p.subreddit || 'unknown';\n  if (!bySubreddit[sub]) bySubreddit[sub] = [];\n\n  const topComments = (commentsByPostId.get(p.post_id) || []).map((c) => String(c.text || '').slice(0, 300));\n  const body = String(p.text || '').replace(/\\s+/g, ' ').trim();\n\n  bySubreddit[sub].push({\n    title: p.title || '',\n    score: p.score || 0,\n    numComments: p.num_comments || 0,\n    bodySnippet: body ? body.slice(0, 500) : '',\n    topComments,\n    permalink: p.permalink || p.url || '',\n    engagementLevel: p.engagement_level || '',\n    scorePerHour: p.score_per_hour || 0\n  });\n}\n\n// Build a condensed text summary per subreddit for the AI\nconst subredditSummaries = Object.entries(bySubreddit)\n  .map(([sub, subPosts]) => {\n    const postSummaries = subPosts\n      .map((p, i) => {\n        let summary = `Post ${i + 1}: \"${p.title}\" (${p.score} upvotes, ${p.numComments} comments`;\n        if (p.engagementLevel) summary += `, ${p.engagementLevel}`;\n        summary += `)\\n  ${p.permalink}`;\n        if (p.bodySnippet) summary += `\\n  Body: ${p.bodySnippet.slice(0, 200)}...`;\n        if (p.topComments.length > 0) {\n          summary += `\\n  Top comments: ${p.topComments.map((c) => `\"${String(c).slice(0, 150)}...\"`).join('; ')}`;\n        }\n        return summary;\n      })\n      .join('\\n');\n\n    return `=== r/${sub} (${subPosts.length} posts) ===\\n${postSummaries}`;\n  })\n  .join('\\n\\n');\n\nreturn [\n  {\n    json: {\n      subredditSummaries,\n      subredditCount: Object.keys(bySubreddit).length,\n      totalPosts: posts.length,\n      totalComments: comments.length,\n      subredditNames: Object.keys(bySubreddit)\n    }\n  }\n];"
+      },
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Aggregate for AI Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2320, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $node['Parse Input & Build Config'].json.openAiApiKey}}"
+            },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "specifyHeaders": "keypair",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({\n  model: $node['Parse Input & Build Config'].json.openAiModel,\n  reasoning_effort: 'none',\n  verbosity: 'low',\n  response_format: { type: 'json_object' },\n  messages: [\n    {\n      role: 'system',\n      content: 'You are an expert audience researcher and content strategist. You analyze Reddit communities to identify audience demographics, interests, pain points, content opportunities, and engagement patterns. You write clear, actionable reports.'\n    },\n    {\n      role: 'user',\n      content: `I've scraped the top posts from ${$json.subredditCount} subreddits relevant to my niche. Analyze them and create a detailed Audience Map.\\n\\nFor EACH subreddit, provide:\\n\\n1. Community Profile: What type of people are here? (demographics, experience level, role)\\n2. Top Themes: The 3-5 recurring topics/themes in this community\\n3. Pain Points: What problems, frustrations, or needs come up repeatedly?\\n4. Content Opportunities: What kinds of content would resonate? What gaps exist?\\n5. Language & Tone: How do people talk here? Formal/casual? Jargon used?\\n6. Engagement Pattern: What types of posts get the most engagement?\\n7. Recommended Content Angles: 3 specific post ideas tailored to this community\\n\\nAfter analyzing each subreddit individually, provide:\\n\\nCROSS-COMMUNITY INSIGHTS:\\n- Common themes across all subreddits\\n- Unique positioning opportunities\\n- Recommended priority order for content/engagement\\n- Overall audience persona summary\\n\\nOutput MUST be a single JSON object matching the schema exactly (no markdown, no extra keys).\\n\\nSchema:\\n{\\n  \\\"subreddits\\\": [\\n    {\\n      \\\"name\\\": \\\"subreddit_name\\\",\\n      \\\"communityProfile\\\": \\\"...\\\",\\n      \\\"topThemes\\\": [\\\"...\\\"],\\n      \\\"painPoints\\\": [\\\"...\\\"],\\n      \\\"contentOpportunities\\\": [\\\"...\\\"],\\n      \\\"languageTone\\\": \\\"...\\\",\\n      \\\"engagementPattern\\\": \\\"...\\\",\\n      \\\"recommendedContentAngles\\\": [\\\"...\\\", \\\"...\\\", \\\"...\\\"]\\n    }\\n  ],\\n  \\\"crossCommunityInsights\\\": {\\n    \\\"commonThemes\\\": [\\\"...\\\"],\\n    \\\"uniquePositioning\\\": \\\"...\\\",\\n    \\\"priorityOrder\\\": [\\\"subreddit1\\\", \\\"subreddit2\\\"],\\n    \\\"audiencePersona\\\": \\\"...\\\"\\n  }\\n}\\n\\nHere is the scraped data:\\n\\n${$json.subredditSummaries}`\n    }\n  ],\n  temperature: 0.3,\n  max_completion_tokens: 6000\n})}}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "a1b2c3d4-0008-4000-8000-000000000008",
+      "name": "🤖 AI Audience Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2620, 460],
+      "notes": "Analyzes all scraped data with OpenAI. Paste `OPENAI_API_KEY_HERE` in the first config node."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// FORMAT AUDIENCE MAP FOR GOOGLE SHEETS\n// ============================================================\n// Parses the AI's JSON response and flattens it into rows\n// suitable for Google Sheets output.\n// ============================================================\n\nconst aiResponse = $input.first().json;\n\n// The AI response text — handle both possible locations\nlet responseText = aiResponse.message?.content \n  || aiResponse.text \n  || aiResponse.choices?.[0]?.message?.content\n  || JSON.stringify(aiResponse);\n\n// Try to extract JSON from the response (handle markdown code blocks)\nlet parsed;\ntry {\n  // Remove markdown code fences if present\n  const cleaned = responseText\n    .replace(/```json\\n?/g, '')\n    .replace(/```\\n?/g, '')\n    .trim();\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  // If JSON parsing fails, return the raw text as a single row\n  return [{\n    json: {\n      subreddit: 'FULL_ANALYSIS',\n      communityProfile: responseText,\n      topThemes: '',\n      painPoints: '',\n      contentOpportunities: '',\n      languageTone: '',\n      engagementPattern: '',\n      recommendedContentAngles: '',\n      parseError: 'AI response was not valid JSON — full text in communityProfile column'\n    }\n  }];\n}\n\n// Build rows for each subreddit\nconst rows = [];\n\nif (parsed.subreddits) {\n  for (const sub of parsed.subreddits) {\n    rows.push({\n      json: {\n        subreddit: `r/${sub.name}`,\n        communityProfile: sub.communityProfile || '',\n        topThemes: (sub.topThemes || []).join(' | '),\n        painPoints: (sub.painPoints || []).join(' | '),\n        contentOpportunities: (sub.contentOpportunities || []).join(' | '),\n        languageTone: sub.languageTone || '',\n        engagementPattern: sub.engagementPattern || '',\n        recommendedContentAngles: (sub.recommendedContentAngles || []).join(' | ')\n      }\n    });\n  }\n}\n\n// Add cross-community insights as a summary row\nif (parsed.crossCommunityInsights) {\n  const xc = parsed.crossCommunityInsights;\n  rows.push({\n    json: {\n      subreddit: '📊 CROSS-COMMUNITY SUMMARY',\n      communityProfile: xc.audiencePersona || '',\n      topThemes: (xc.commonThemes || []).join(' | '),\n      painPoints: '',\n      contentOpportunities: xc.uniquePositioning || '',\n      languageTone: '',\n      engagementPattern: '',\n      recommendedContentAngles: (xc.priorityOrder || []).map((s, i) => `${i+1}. r/${s}`).join(' | ')\n    }\n  });\n}\n\nconsole.log(`Formatted ${rows.length} rows for Google Sheets`);\nreturn rows;"
+      },
+      "id": "a1b2c3d4-0009-4000-8000-000000000009",
+      "name": "Format Audience Map",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2920, 460]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "YOUR_GOOGLE_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0010-4000-8000-000000000010",
+      "name": "📊 Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [3220, 460],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets OAuth2"
+        }
+      },
+      "notes": "Appends the audience map to your Google Sheet.\n\n📋 SHEET SETUP:\nCreate a Google Sheet with these column headers in Row 1:\n\nA: subreddit\nB: communityProfile\nC: topThemes\nD: painPoints\nE: contentOpportunities\nF: languageTone\nG: engagementPattern\nH: recommendedContentAngles\n\nThen paste the sheet URL into the documentId field."
+    },
+    {
+      "parameters": {
+        "content": "# 🔍 Reddit Subreddit Discovery & Niche Audience Map\n\n**What this workflow does:**\nEnter niche keywords → Automatically discovers relevant subreddits →\nScrapes top posts from the best communities → AI analyzes audience\npatterns → Outputs a complete Audience Map to Google Sheets.\n\n**Why it's unique:**\nThis uses the Reddit Scraper's exclusive **Discover Mode** — no other\ntool can automatically find subreddits by keyword. Combined with\nengagement scoring and AI analysis, you get a complete niche map in\nminutes instead of hours of manual browsing.\n\n---\n\n## ⚡ Quick Setup (5 minutes)\n\n1. **Apify API Token**: Get from https://console.apify.com/settings/integrations\n2. Actor ID is already set to `spry_wholemeal~reddit-scraper` by default\n3. **OpenAI API Key**: Add your key in the AI node credentials\n4. **Google Sheet**: Create sheet with headers (see 📊 node notes)\n5. **Run it!** Click \"Test workflow\" or use the Form trigger URL\n\n---\n\n## 💰 Cost Per Run\n- **Apify**: ~$0.05-0.15 (Discover + Scrape, depends on volume)\n- **OpenAI**: ~$0.01-0.03 (GPT-4o-mini)\n- **Total**: Under $0.20 per niche analysis\n\n---\n\n**Actor**: [Your Reddit Scraper Name] on Apify Store\n**Template by**: [Your Name]\n**Version**: 1.0",
+        "height": 620,
+        "width": 480,
+        "color": 4
+      },
+      "id": "a1b2c3d4-0011-4000-8000-000000000011",
+      "name": "Sticky Note - Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-340, 40]
+    },
+    {
+      "parameters": {
+        "content": "## 🔌 ALTERNATIVE: Using the Apify Community Node\n\nThis template uses HTTP Request nodes for maximum compatibility\n(works everywhere, no extra install needed).\n\nIf you prefer the native Apify node:\n1. Install: Settings → Community Nodes → `@apify/n8n-nodes-apify`\n2. Replace each HTTP Request node with an Apify \"Run Actor and\n   get dataset items\" node\n3. Set Actor ID and paste the JSON input from the Code node\n\nBoth approaches produce identical results.",
+        "height": 280,
+        "width": 420,
+        "color": 6
+      },
+      "id": "a1b2c3d4-0012-4000-8000-000000000012",
+      "name": "Sticky Note - Alt Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-340, 760]
+    },
+    {
+      "parameters": {
+        "content": "## Phase 1: DISCOVER\nFinds subreddits matching your\nniche keywords. Uses the Reddit\nScraper's unique Discover mode\nthat no other tool offers.",
+        "height": 160,
+        "width": 260,
+        "color": 3
+      },
+      "id": "a1b2c3d4-0013-4000-8000-000000000013",
+      "name": "Sticky Note - Phase 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [740, 220]
+    },
+    {
+      "parameters": {
+        "content": "## Phase 2: RANK & SCRAPE\nScores subreddits by size × activity,\npicks top 10, then scrapes their\nbest posts with engagement data.",
+        "height": 160,
+        "width": 300,
+        "color": 3
+      },
+      "id": "a1b2c3d4-0014-4000-8000-000000000014",
+      "name": "Sticky Note - Phase 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1420, 220]
+    },
+    {
+      "parameters": {
+        "content": "## Phase 3: AI ANALYSIS → OUTPUT\nAI generates per-subreddit audience\nprofiles, pain points, content angles.\nResults saved to Google Sheets.",
+        "height": 160,
+        "width": 300,
+        "color": 3
+      },
+      "id": "a1b2c3d4-0015-4000-8000-000000000015",
+      "name": "Sticky Note - Phase 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [2520, 220]
+    }
+  ],
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Parse Input & Build Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Niche Keywords Form": {
+      "main": [
+        [
+          {
+            "node": "Parse Input & Build Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input & Build Config": {
+      "main": [
+        [
+          {
+            "node": "🔍 Discover Subreddits (Apify)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Discover Subreddits (Apify)": {
+      "main": [
+        [
+          {
+            "node": "Rank & Filter Top Subreddits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rank & Filter Top Subreddits": {
+      "main": [
+        [
+          {
+            "node": "🤖 Select Top Subreddits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 Select Top Subreddits": {
+      "main": [
+        [
+          {
+            "node": "Build scrape plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build scrape plan": {
+      "main": [
+        [
+          {
+            "node": "📥 Scrape Top Subreddits (Apify)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📥 Scrape Top Subreddits (Apify)": {
+      "main": [
+        [
+          {
+            "node": "Aggregate for AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate for AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "🤖 AI Audience Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 AI Audience Analysis": {
+      "main": [
+        [
+          {
+            "node": "Format Audience Map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Audience Map": {
+      "main": [
+        [
+          {
+            "node": "📊 Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "Marketing"
+    },
+    {
+      "name": "AI"
+    },
+    {
+      "name": "Reddit"
+    },
+    {
+      "name": "Research"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-27T00:00:00.000Z",
+  "versionId": "1"
+}
