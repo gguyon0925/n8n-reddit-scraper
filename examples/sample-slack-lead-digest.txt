@@ -1,0 +1,26 @@
+Reddit Lead Report — Monday, Feb 27
+Found 3 hot leads (score ≥ 65)
+
+🟠 #1 — Score: 78/100 (high intent)
+> r/smallbusiness: Looking for an invoicing tool that doesn’t suck
+> 📊 52 upvotes · 18 comments · ⚡ 10.4/hr (rising)
+> 😤 Pain point: Manual invoice tracking in spreadsheets; needs automation and reconciliation.
+> 💡 Suggested angle: Ask what they’ve tried, share a lightweight workflow to automate intake + reconciliation, and compare “must-have” features before buying.
+> 🔗 https://www.reddit.com/r/smallbusiness/comments/abc123/looking_for_an_invoicing_tool/
+
+🟡 #2 — Score: 71/100 (medium intent)
+> r/startups: Alternative to QuickBooks for a tiny team?
+> 📊 19 upvotes · 11 comments · ⚡ 3.2/hr (medium)
+> 😤 Pain point: QuickBooks feels heavy/expensive for their use case.
+> 💡 Suggested angle: Share a checklist for evaluating invoicing tools for small teams; offer a recommendation framework.
+> 🔗 https://www.reddit.com/r/startups/comments/def456/alternative_to_quickbooks/
+
+🟡 #3 — Score: 66/100 (medium intent)
+> r/freelance: How do you keep invoices organized across clients?
+> 📊 8 upvotes · 7 comments · ⚡ 1.1/hr (low)
+> 😤 Pain point: Scattered invoices; wants a repeatable process.
+> 💡 Suggested angle: Give a simple system (naming, folders, reminders) and mention automation options if they scale.
+> 🔗 https://www.reddit.com/r/freelance/comments/ghi789/how_do_you_keep_invoices_organized/
+
+Action: 1 to prioritize · 2 to engage · 0 to monitor
+

@@ -1,0 +1,34 @@
+Weekly Reddit digest for: best crm, sales automation
+
+AI SUMMARY
+Founders are increasingly asking for lightweight, affordable CRM workflows that don’t require heavy setup. The highest-signal threads focus on “what should I buy next” and implementation details (pipelines, integrations, reporting).
+
+TRENDS
+1. “Simple CRM” demand is rising for tiny teams
+   - Multiple posts asking for “good enough” CRMs under a tight budget
+   - Frequent comparison threads: Airtable vs HubSpot vs Pipedrive
+2. Automation-first mindset
+   - People want email capture, follow-ups, and reporting with minimal manual work
+3. Spreadsheet migration pain
+   - Many are moving from spreadsheets and asking for step-by-step migration advice
+
+RECOMMENDED ACTIONS
+1. Publish a “CRM checklist for 1–5 person teams” and link it in replies.
+2. Create an automation template (lead capture + follow-up + pipeline) and share the workflow.
+3. Track recurring competitor mentions to identify switching triggers.
+
+NOTABLE POSTS
+1. Best CRM for a 3-person services team? (r/smallbusiness)
+   https://www.reddit.com/r/smallbusiness/comments/xxxxxx/best_crm_for_3_person_team/
+   Why: Clear buyer intent and constraints; good fit for “simple + automation” positioning.
+
+TOP POSTS
+1. Best CRM for a 3-person services team?
+   r/smallbusiness | score 120 | comments 46
+   https://www.reddit.com/r/smallbusiness/comments/xxxxxx/best_crm_for_3_person_team/
+2. How do you automate follow-ups without annoying people?
+   r/sales | score 88 | comments 31
+   https://www.reddit.com/r/sales/comments/yyyyyy/automate_followups/
+
+Generated at: 2026-02-27T09:00:00.000Z
+
