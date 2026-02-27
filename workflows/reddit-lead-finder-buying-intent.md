@@ -170,6 +170,6 @@ Swap `gpt-4o-mini` for `gpt-4o` for ~3-5% better scoring accuracy at ~10x cost.
 
 ## 🔗 Links
 
-- **Reddit Scraper on Apify**: [YOUR_ACTOR_URL]
+- **Reddit Scraper on Apify**: `https://console.apify.com/actors/spry_wholemeal~reddit-scraper` (replace with your Actor if different)
 - **n8n**: [https://n8n.io](https://n8n.io)
 - **Apify Console**: [https://console.apify.com](https://console.apify.com)

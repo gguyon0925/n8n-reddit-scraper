@@ -117,6 +117,6 @@ Plus a **Cross-Community Summary** row with overall persona and priority ranking
 
 ## 🔗 Links
 
-- **Reddit Scraper on Apify**: [YOUR_ACTOR_URL]
+- **Reddit Scraper on Apify**: `https://console.apify.com/actors/spry_wholemeal~reddit-scraper` (replace with your Actor if different)
 - **n8n**: [https://n8n.io](https://n8n.io)
 - **Apify Console**: [https://console.apify.com](https://console.apify.com)
