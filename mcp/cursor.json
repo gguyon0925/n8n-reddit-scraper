@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "reddit-scraper": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@apify/actors-mcp-server@latest",
+        "--actors",
+        "spry_wholemeal/reddit-scraper"
+      ],
+      "env": {
+        "APIFY_TOKEN": "<YOUR_APIFY_TOKEN>"
+      }
+    }
+  }
+}

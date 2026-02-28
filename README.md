@@ -1,48 +1,45 @@
-# n8n Reddit Automations (Templates)
+# Reddit Scraper — Integrations & Automations
 
-Import-ready n8n workflows that turn Reddit into:
+Ready-to-use integrations for the [Reddit Scraper](https://apify.com/spry_wholemeal/reddit-scraper) Apify Actor.
 
-- **Leads** (buying-intent scanner + Slack/Sheets)
-- **Audience research** (subreddit discovery + AI audience map)
-- **Content pipeline** (Reddit threads → outlines → full blog drafts)
-- **Weekly digest** (email summary + optional AI trends)
+## MCP Server Setup
 
-These templates are designed to be **safe to share publicly** (no credentials embedded). You paste keys/tokens inside a single config node after import.
+Connect the Reddit Scraper directly to your AI coding assistant (Claude, Cursor, VS Code, Windsurf). One config, full access to all 4 scraper modes.
 
-## Templates
+**[Setup guide →](./mcp/)**
 
-> Import via **n8n → Workflow → Import from URL** using the raw GitHub URL:
->
-> `https://raw.githubusercontent.com/<GITHUB_OWNER>/<REPO>/main/workflows/<workflow>.json`
+Quickest option — Claude Code, one command:
 
-- **🎯 Reddit Lead Finder — Buying intent scanner**
-  - Workflow: `workflows/reddit-lead-finder-buying-intent.json`
-  - Setup guide: `workflows/reddit-lead-finder-buying-intent.md`
+```bash
+claude mcp add reddit-scraper \
+  -e APIFY_TOKEN=<YOUR_APIFY_TOKEN> \
+  -- npx -y @apify/actors-mcp-server@latest --actors spry_wholemeal/reddit-scraper
+```
 
-- **🔍 Subreddit Discovery — Niche audience map**
-  - Workflow: `workflows/subreddit-discovery.json`
-  - Setup guide: `workflows/subreddit-discovery.md`
+## AI Agent Prompts
 
-- **🧠 Reddit Content Machine — Blog drafts from discussions**
-  - Workflow: `workflows/reddit-content-machine-blog-generator.json`
-  - Setup guide: `workflows/README-content-machine.md`
+Copy-paste prompts that teach your AI assistant how to use the Reddit Scraper Actor. Add them as project context (`.claude/`, `.cursor/rules/`, etc.) so your agent knows every input, output, and gotcha.
 
-- **📧 Weekly Digest Email**
-  - Workflow: `workflows/reddit-weekly-digest-email.json`
+**[Browse prompts →](./prompts/)**
 
-## How these workflows get Reddit data
+| Prompt | Lines | Best for |
+|--------|-------|----------|
+| [Full reference](./prompts/reddit-scraper-full.md) | ~350 | Power users, complex workflows |
+| [Quick reference](./prompts/reddit-scraper-quick.md) | ~100 | Simple scraping, getting started |
 
-All templates call an **Apify Actor** (your Reddit Scraper) via:
+## n8n Workflow Templates
 
-- `POST /v2/acts/<actorId>/run-sync-get-dataset-items?token=<APIFY_TOKEN>`
-- Body is an Actor input JSON (mode: `search` / `discover` / `scrape`).
+Import-ready n8n workflows — leads, audience research, content generation, and weekly digests. No code required.
 
-If you fork/clone the Actor, update `actorId` in the workflow config node(s).
+**[Browse templates →](./n8n/)**
 
-## Repo layout
+| Template | What it does |
+|----------|-------------|
+| Lead Finder | AI buying-intent scanner → Slack + Google Sheets |
+| Subreddit Discovery | Find niche subreddits → AI audience map |
+| Content Machine | Reddit threads → blog post drafts |
+| Weekly Digest | Email summary of top posts + AI trends |
 
-- `workflows/`: workflow JSONs + per-template setup docs
-- `examples/`: sample outputs (Sheets rows, Slack message, email digest)
-- `assets/`: screenshots of workflow canvases + results
-- `PUBLISHING.md`: how to export/share templates
+## Sample Outputs
 
+See what these workflows produce: [`examples/`](./examples/)
